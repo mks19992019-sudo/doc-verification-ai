@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+uploads/
+weights/
+*.pt
+*.pth
+.pytest_cache/

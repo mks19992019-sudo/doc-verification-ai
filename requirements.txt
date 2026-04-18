@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+python-dotenv
+anthropic
+langchain
+langchain-anthropic
+langchain-groq
+pillow
+numpy
+httpx
