@@ -11,3 +11,5 @@ langchain-groq
 pillow
 numpy
 httpx
+opencv-python
+pdfminer.six
