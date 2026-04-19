@@ -7,6 +7,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 *.venv/
 
 # Environment
@@ -18,6 +19,9 @@ uploads/
 weights/
 *.pt
 *.pth
+
+# Training dataset (too large for git)
+training/dataset/
 
 # IDE
 .vscode/
