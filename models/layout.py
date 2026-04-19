@@ -72,6 +72,31 @@ class LayoutModel(BaseDetectionModel):
                     signals=["No structural lines detected — image may be a photograph rather than a document"]
                 )
 
+            # Distinguish documents from photographs using line quality
+            # Documents have long, axis-aligned lines. Photos have short fragmented edges.
+            lengths = [np.sqrt((l[0][2]-l[0][0])**2 + (l[0][3]-l[0][1])**2) for l in lines]
+            avg_length = np.mean(lengths)
+            max_length = max(lengths) if lengths else 0
+
+            # A real scanned document: 5-30 structural lines (margins, table borders, dividers)
+            # A photograph processed with Canny+Hough: 100+ random edge fragments
+            # A mobile photo of a document: intermediate, but still has clear long margins
+            too_many_lines = len(lines) > 100
+            avg_too_short = avg_length < 80
+            no_long_lines = max_length < 150
+
+            is_not_document = too_many_lines or avg_too_short or no_long_lines
+
+            if is_not_document:
+                return ModelOutput(
+                    model_id=self.model_id,
+                    available=self.available,
+                    forgery_score=0.0,
+                    confidence=0.60,
+                    regions=[],
+                    signals=[f"No document structure detected — image appears to be a photograph (found {len(lines)} edge fragments, avg length {avg_length:.0f}px)"]
+                )
+
             # Need at least 3 lines for meaningful analysis
             if len(lines) < 3:
                 return ModelOutput(
@@ -98,49 +123,57 @@ class LayoutModel(BaseDetectionModel):
                 elif abs(angle - 90) < self.line_angle_threshold:
                     vertical_lines.append((x1, x2, length))
 
-            # Step 5: Analyze margin consistency
+            # Step 5: Analyze margin consistency using grid regularity
+            # Documents have a repeating grid of text lines — check if spacings follow a pattern
             forgery_score = 0.0
             signals = []
             regions = []
 
-            # Check horizontal line alignment
+            # Use median spacing as reference — robust to margin gaps (outliers)
             if horizontal_lines:
-                y_positions = sorted([h[0] for h in horizontal_lines])
+                y_positions = sorted(set([h[0] for h in horizontal_lines]))
                 spacings = np.diff(y_positions)
 
                 # Filter out tiny spacings (less than 5 pixels - likely noise)
                 valid_spacings = [s for s in spacings if s >= 5]
 
-                if len(valid_spacings) >= 1:
-                    avg_spacing = np.mean(valid_spacings)
-                    deviations = [abs(s - avg_spacing) / avg_spacing for s in valid_spacings]
-                    max_deviation = min(max(deviations), 1.0)  # Cap at 100%
+                if len(valid_spacings) >= 3:
+                    # Use median as reference — margins don't affect it
+                    ref_spacing = np.median(valid_spacings)
+                    deviations = [abs(s - ref_spacing) / ref_spacing for s in valid_spacings]
+                    max_deviation = min(max(deviations), 1.0)
 
-                    if max_deviation > self.margin_deviation_threshold:
+                    # Flag only if deviation is severe (> 30%) AND affects a significant portion
+                    severe_count = sum(1 for d in deviations if d > 0.30)
+                    severe_ratio = severe_count / len(deviations) if deviations else 0
+
+                    if severe_ratio > 0.3:
                         forgery_score = max(forgery_score, max_deviation * 0.5)
-                        signals.append(f"Irregular horizontal spacing detected (max deviation: {max_deviation*100:.1f}%)")
+                        signals.append(f"Irregular horizontal spacing detected ({severe_count}/{len(valid_spacings)} spacings deviate >30% from grid)")
                     else:
-                        signals.append("Horizontal margins are consistent")
+                        signals.append("Horizontal text grid is regular — margins consistent")
                 else:
                     signals.append("Insufficient horizontal line spacing for analysis")
 
-            # Check vertical line alignment
             if vertical_lines:
-                x_positions = sorted([v[0] for v in vertical_lines])
+                x_positions = sorted(set([v[0] for v in vertical_lines]))
                 spacings = np.diff(x_positions)
 
                 valid_spacings = [s for s in spacings if s >= 5]
 
-                if len(valid_spacings) >= 1:
-                    avg_spacing = np.mean(valid_spacings)
-                    deviations = [abs(s - avg_spacing) / avg_spacing for s in valid_spacings]
+                if len(valid_spacings) >= 3:
+                    ref_spacing = np.median(valid_spacings)
+                    deviations = [abs(s - ref_spacing) / ref_spacing for s in valid_spacings]
                     max_deviation = min(max(deviations), 1.0)
 
-                    if max_deviation > self.margin_deviation_threshold:
+                    severe_count = sum(1 for d in deviations if d > 0.30)
+                    severe_ratio = severe_count / len(deviations) if deviations else 0
+
+                    if severe_ratio > 0.3:
                         forgery_score = max(forgery_score, max_deviation * 0.5)
-                        signals.append(f"Irregular vertical spacing detected (max deviation: {max_deviation*100:.1f}%)")
+                        signals.append(f"Irregular vertical spacing detected ({severe_count}/{len(valid_spacings)} spacings deviate >30% from grid)")
                     else:
-                        signals.append("Vertical column borders are consistent")
+                        signals.append("Vertical column grid is regular")
 
             # Step 6: Check for rotation/skew
             if horizontal_lines:

@@ -8,7 +8,10 @@ from schemas.schemas import ModelOutput, FlaggedRegion
 class ELAModel(BaseDetectionModel):
     model_id = "ELA"
 
-    def __init__(self, quality: int = 85, threshold: float = 15.0):
+    def __init__(self, quality: int = 95, threshold: float = 30.0):
+        # quality=95: minimal re-compression to simulate second-gen copy
+        # threshold=30: mobile photos have natural pixel noise up to ~25 levels
+        #   threshold 15 flags too many false positives on real scans
         self.quality = quality
         self.threshold = threshold
         self._available = True
@@ -58,15 +61,21 @@ class ELAModel(BaseDetectionModel):
             bright_ratio = bright_count / total_pixels
 
             # Forgery score: 0.0 (clean) to 1.0 (heavily forged)
-            forgery_score = min(bright_ratio * 50, 1.0)
+            # Mobile scans naturally have some noise — heavily discount low ratios
+            # Scale is tuned so genuine scans score < 0.2
+            forgery_score = min(bright_ratio * 10, 1.0)
 
             # Confidence based on how decisive the signal is
             if bright_ratio < 0.001:
                 confidence = 0.85
                 signals = ["No significant compression artifacts detected — document appears to be a single-generation scan"]
-            elif bright_ratio < 0.01:
-                confidence = 0.75
-                signals = ["Minor compression inconsistencies found within normal range"]
+            elif bright_ratio < 0.02:
+                # Mobile photos have natural noise that can create small bright_ratio values
+                confidence = 0.60
+                signals = ["Minor compression inconsistencies within expected range for mobile photography"]
+            elif bright_ratio < 0.05:
+                confidence = 0.70
+                signals = ["Some compression inconsistencies present — typical of scanned documents"]
             else:
                 confidence = 0.80
                 signals = [f"Compression artifacts detected in {bright_count} pixels ({bright_ratio*100:.2f}% of image)"]
