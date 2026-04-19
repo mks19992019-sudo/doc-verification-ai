@@ -51,31 +51,8 @@ class CNNModel(BaseDetectionModel):
 
     def _load_model(self):
         try:
-            weights_file = None
-
-            # 1. Try local fine-tune weights first
-            if os.path.exists(self._weights_path):
-                weights_file = self._weights_path
-                print(f"[CNN] Found fine-tuned weights: {weights_file}")
-
-            # 2. Try downloading ResNet-50 ImageNet weights
-            if weights_file is None:
-                try:
-                    weights_file = _download_resnet50_weights()
-                    print(f"[CNN] Loaded ImageNet weights from cache: {weights_file}")
-                except Exception as e:
-                    print(f"[CNN] Could not download ImageNet weights: {e}")
-                    weights_file = None
-
-            # 3. Build model
-            if weights_file:
-                self._model = models.resnet50(weights=None)
-                state_dict = torch.load(weights_file, map_location=self._device, weights_only=True)
-                self._model.load_state_dict(state_dict)
-            else:
-                self._model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-
-            # Replace classification head
+            # 1. Build model with custom classification head first
+            self._model = models.resnet50(weights=None)
             num_features = self._model.fc.in_features
             self._model.fc = nn.Sequential(
                 nn.Dropout(0.4),
@@ -84,13 +61,34 @@ class CNNModel(BaseDetectionModel):
             self._model = self._model.to(self._device)
             self._model.eval()
 
-            # 4. Load fine-tune weights on top if available
+            # 2. Load fine-tuned weights if available
             if os.path.exists(self._weights_path):
                 state_dict = torch.load(self._weights_path, map_location=self._device, weights_only=True)
-                self._model.load_state_dict(state_dict)
+                # Fix key mismatch: checkpoint saves fc as plain Linear (fc.weight/fc.bias),
+                # but model has fc as nn.Sequential (fc.0 for Dropout, fc.1 for Linear)
+                fixed_state_dict = {}
+                for k, v in state_dict.items():
+                    if k == "fc.weight":
+                        new_key = "fc.1.weight"
+                    elif k == "fc.bias":
+                        new_key = "fc.1.bias"
+                    else:
+                        new_key = k
+                    fixed_state_dict[new_key] = v
+                self._model.load_state_dict(fixed_state_dict)
                 print(f"[CNN] Fine-tuned weights loaded from {self._weights_path}")
+                self._available = True
+            else:
+                # Load ImageNet weights as fallback
+                try:
+                    weights_file = _download_resnet50_weights()
+                    state_dict = torch.load(weights_file, map_location=self._device, weights_only=True)
+                    self._model.load_state_dict(state_dict, strict=False)
+                    print(f"[CNN] Loaded ImageNet weights from cache: {weights_file}")
+                except Exception as e:
+                    print(f"[CNN] Could not load ImageNet weights: {e}")
+                self._available = True
 
-            self._available = True
         except Exception as e:
             print(f"[CNN] Failed to load model: {e}")
             self._available = False
