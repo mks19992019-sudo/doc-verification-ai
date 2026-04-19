@@ -30,7 +30,7 @@ app = FastAPI(title="Document Forgery Detection API", version="1.0.0", lifespan=
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]

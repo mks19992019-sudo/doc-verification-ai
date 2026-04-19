@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     CNN_WEIGHTS_PATH: str = "weights/resnet50_forgery.pt"
     MAX_FILE_SIZE_MB: int = 20
+    # Comma-separated list of allowed frontend origins for CORS
+    # Example: http://localhost:3000,https://your-frontend.vercel.app
+    ALLOWED_ORIGINS: str = "*"
 
 
 settings = Settings()
