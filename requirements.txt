@@ -13,3 +13,8 @@ numpy
 httpx
 opencv-python
 pdfminer.six
+torch
+torchvision
+scikit-learn
+tqdm
+tensorboard
