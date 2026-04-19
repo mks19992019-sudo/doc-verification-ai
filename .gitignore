@@ -1,8 +1,27 @@
+# Claude Code
+.claude/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+.Python
+venv/
+*.venv/
+
+# Environment
 .env
+.env.local
+
+# Uploads & weights
 uploads/
 weights/
 *.pt
 *.pth
-.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
